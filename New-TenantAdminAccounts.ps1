@@ -669,8 +669,8 @@ foreach ($def in $accountDefs) {
 #      recover access when normal auth paths (including MFA) are broken.
 #    - A dedicated policy scoped to only these accounts is easier to audit and
 #      avoids unintended scope creep from broader "all users" policies.
-#    - Created in REPORT-ONLY mode so no one is locked out immediately.
-#      After validating sign-in logs, change state to 'enabled'.
+#    - Created in ENABLED state - MFA is enforced immediately on first sign-in
+#      for adm-engineer and adm-support.
 
 Write-Step "Creating Conditional Access MFA policy..."
 
@@ -765,3 +765,4 @@ Disconnect-MgGraph | Out-Null
 Write-Host "`n[OK] Disconnected. Script complete.`n" -ForegroundColor Green
 
 #endregion
+                 

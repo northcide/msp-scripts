@@ -3,25 +3,31 @@
     Creates standard admin accounts on a Microsoft 365 tenant.
 
 .DESCRIPTION
-    Connects to a Microsoft 365 tenant via Microsoft Graph and provisions three
+    Connects to a Microsoft 365 tenant via Microsoft Graph and provisions four
     standard admin accounts using the tenant's *.onmicrosoft.com domain:
 
-        adm-breakglass@<tenant>.onmicrosoft.com
-            Global Administrator - Breakglass emergency account.
+        adm-breakglass-msp@<tenant>.onmicrosoft.com
+            Global Administrator - MSP-held breakglass emergency account.
             Excluded from ALL Conditional Access policies.
-            Password should be stored offline (e.g., sealed envelope in a safe).
+            Credentials stored in MSP secure vault. Never used for day-to-day work.
+
+        adm-breakglass-client@<tenant>.onmicrosoft.com
+            Global Administrator - Client-held breakglass emergency account.
+            Excluded from ALL Conditional Access policies.
+            Credentials handed to client and stored in a physically separate location
+            from the MSP copy. Ensures client retains independent emergency access.
 
         adm-engineer@<tenant>.onmicrosoft.com
             Global Administrator - Engineer account for day-to-day tenant work.
+            Holds all built-in Entra ID roles except Global Administrator.
             Subject to MFA via CA policy.
 
         adm-support@<tenant>.onmicrosoft.com
             Support Admin - Exchange, User, Helpdesk, SharePoint, and License Admin roles.
             Subject to MFA via CA policy.
 
-    A Conditional Access policy is created in REPORT-ONLY mode requiring MFA for
-    the two non-breakglass accounts. Review sign-in logs, then set the policy to
-    'enabled' when ready.
+    A Conditional Access policy is created requiring MFA for adm-engineer and
+    adm-support. Both breakglass accounts are excluded from all CA policies.
 
     If an account already exists it is skipped with a warning. Credentials for
     newly created accounts are displayed in the console - copy them immediately
@@ -29,7 +35,7 @@
 
 .PARAMETER ResetPasswords
     Resets the passwords for adm-engineer and adm-support only.
-    The breakglass account is never touched by this switch.
+    Neither breakglass account is ever touched by this switch.
     New passwords are displayed in the console - copy them immediately.
     Skips all account creation, role assignment, and CA policy steps.
 
@@ -512,18 +518,29 @@ if ($ResetPasswords) {
 #  Naming convention:
 #    adm-<role-shortname>@<tenant>.onmicrosoft.com
 #
-#  adm-breakglass  - GA Breakglass  (excluded from CA / MFA)
-#  adm-engineer      - Engineer    (MFA required)
-#  adm-support     - Support Admin  (MFA required)
+#  adm-breakglass-msp    - GA Breakglass, MSP-held    (excluded from CA / MFA)
+#  adm-breakglass-client - GA Breakglass, client-held (excluded from CA / MFA)
+#  adm-engineer          - Engineer                   (MFA required)
+#  adm-support           - Support Admin               (MFA required)
 
 $accountDefs = @(
     [ordered]@{
-        DisplayName       = 'ADM - Breakglass'
-        UserPrincipalName = "adm-breakglass@$domainName"
-        MailNickname      = 'adm-breakglass'
-        Description       = 'Global Admin Breakglass - emergency last-resort access. Excluded from all Conditional Access policies. Store password offline in a secure physical location.'
+        DisplayName       = 'ADM - Breakglass (MSP)'
+        UserPrincipalName = "adm-breakglass-msp@$domainName"
+        MailNickname      = 'adm-breakglass-msp'
+        Description       = 'Global Admin Breakglass - MSP-held emergency account. Excluded from all Conditional Access policies. Credentials stored in MSP secure vault. Never used for day-to-day work.'
         Roles             = @('GlobalAdministrator')
         MfaRequired       = $false
+        IsBreakglass      = $true
+    },
+    [ordered]@{
+        DisplayName       = 'ADM - Breakglass (Client)'
+        UserPrincipalName = "adm-breakglass-client@$domainName"
+        MailNickname      = 'adm-breakglass-client'
+        Description       = 'Global Admin Breakglass - client-held emergency account. Excluded from all Conditional Access policies. Credentials stored with client in a physically separate location from MSP copy. Never used for day-to-day work.'
+        Roles             = @('GlobalAdministrator')
+        MfaRequired       = $false
+        IsBreakglass      = $true
     },
     [ordered]@{
         DisplayName              = 'ADM - Engineer'
@@ -691,7 +708,14 @@ $mfaTargetIds = @(
         }
 )
 
-$breakglassId = $objectIdMap["adm-breakglass@$domainName"]
+$breakglassIds = @(
+    $accountDefs |
+        Where-Object { $_['IsBreakglass'] } |
+        ForEach-Object {
+            $id = $objectIdMap[$_.UserPrincipalName]
+            if ($id) { $id }
+        }
+)
 
 if ($mfaTargetIds.Count -eq 0) {
     Write-Warn "No MFA-required accounts found - skipping CA policy creation."
@@ -707,7 +731,7 @@ else {
     }
     elseif ($PSCmdlet.ShouldProcess($policyName, 'Create Conditional Access policy')) {
         $excludedUsers = [System.Collections.Generic.List[string]]::new()
-        if ($breakglassId) { $excludedUsers.Add($breakglassId) }
+        foreach ($id in $breakglassIds) { $excludedUsers.Add($id) }
 
         $caBody = @{
             displayName   = $policyName
@@ -728,33 +752,4 @@ else {
             }
         }
 
-        $caPolicy = New-MgIdentityConditionalAccessPolicy -BodyParameter $caBody
-        Write-OK "Created CA policy: '$policyName'  (Id: $($caPolicy.Id))"
-        Write-OK "MFA is enforced - adm-engineer and adm-support must use MFA to sign in."
-    }
-}
-
-#endregion
-
-#region -- Credential Summary -------------------------------------------------
-
-if ($newCredentials.Count -gt 0) {
-    Write-Host ""
-    Write-Host "  +----------------------------------------------------------+" -ForegroundColor Yellow
-    Write-Host "  |   NEW ACCOUNT CREDENTIALS - COPY NOW, STORE SECURELY    |" -ForegroundColor Yellow
-    Write-Host "  +----------------------------------------------------------+" -ForegroundColor Yellow
-
-    foreach ($cred in $newCredentials) {
-        Write-Host ""
-        Write-Host "  Display Name  : $($cred.DisplayName)"
-        Write-Host "  UPN           : $($cred.UserPrincipalName)"
-        Write-Host "  Password      : " -NoNewline
-        Write-Host $cred.Password -ForegroundColor Yellow -BackgroundColor DarkGray
-        Write-Host "  Roles         : $($cred.Roles)"
-        Write-Host "  MFA Required  : $($cred.MfaRequired)"
-        Write-Host "  ----------------------------------------------------------"
-    }
-
-    Write-Host ""
-    Write-Host "  [!!] BREAKGLASS: Split the password and store each half in a" -ForegroundColor Yellow
-    Write-Host "       separate se
+        $caPolicy = New-MgIdentityConditionalAccessPolicy -BodyPa

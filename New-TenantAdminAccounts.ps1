@@ -54,6 +54,10 @@
     Requires the Microsoft.Graph PowerShell module:
         Install-Module Microsoft.Graph -Scope CurrentUser
 
+    All accounts are created without a usageLocation, which prevents license
+    assignment in Entra ID. This is intentional - admin accounts should have no
+    mailbox, OneDrive, or Teams presence to reduce their attack surface.
+
     Graph API delegated permissions required:
         User.ReadWrite.All
         RoleManagement.ReadWrite.Directory
@@ -584,6 +588,10 @@ foreach ($def in $accountDefs) {
             forceChangePasswordNextSignIn        = $false
             forceChangePasswordNextSignInWithMfa = $false
         }
+        # usageLocation is intentionally omitted. Entra ID requires usageLocation
+        # before any license can be assigned. Keeping it unset prevents these
+        # purpose-built admin accounts from being licensed, reducing attack surface
+        # (no mailbox, no OneDrive, no Teams presence to target).
     }
 
     $newUser = New-MgUser -BodyParameter $userBody
@@ -749,20 +757,4 @@ if ($newCredentials.Count -gt 0) {
 
     Write-Host ""
     Write-Host "  [!!] BREAKGLASS: Split the password and store each half in a" -ForegroundColor Yellow
-    Write-Host "       separate sealed envelope in a physically secure location." -ForegroundColor Yellow
-    Write-Host "       Do NOT store it digitally or in a password manager." -ForegroundColor Yellow
-    Write-Host ""
-}
-else {
-    Write-Host "`n   No new accounts were created (all already existed or WhatIf mode)." -ForegroundColor Cyan
-}
-
-#endregion
-
-#region -- Disconnect ---------------------------------------------------------
-
-Disconnect-MgGraph | Out-Null
-Write-Host "`n[OK] Disconnected. Script complete.`n" -ForegroundColor Green
-
-#endregion
-                 
+    Write-Host "       separate se

@@ -18,8 +18,12 @@
             from the MSP copy. Ensures client retains independent emergency access.
 
         adm-engineer@<tenant>.onmicrosoft.com
-            Global Administrator - Engineer account for day-to-day tenant work.
-            Holds all built-in Entra ID roles except Global Administrator.
+            Engineer account for day-to-day tenant work.
+            Holds a curated set of built-in Entra ID roles ("Tier 1" - operational).
+            Explicitly excludes elevation-capable roles (Conditional Access Admin,
+            Privileged Role Admin, Application Admin, Privileged Auth Admin, etc.) -
+            those are listed in the script's "Tier 0.5" comment block as PIM-eligible
+            candidates the operator can configure separately when PIM is set up.
             Subject to MFA via CA policy.
 
         adm-support@<tenant>.onmicrosoft.com
@@ -131,12 +135,55 @@ $RoleTemplateId = @{
 
 #endregion
 
-#region -- Engineer Role Definitions ------------------------------------------
-#  All built-in Entra ID roles except Global Administrator.
-#  Retrieved from tenant contoso.onmicrosoft.com on 2026-04-24.
-#  To refresh: Get-MgRoleManagementDirectoryRoleDefinition -Filter 'isBuiltIn eq true' -All |
-#              Where-Object { $_.Id -ne '62e90394-69f5-4237-9190-012177145e10' } |
-#              Sort-Object DisplayName | ForEach-Object { "'$($_.DisplayName)' = '$($_.Id)'" }
+#region -- Engineer Role Definitions (Tier 1 - operational) -------------------
+#
+#  Curated set of built-in Entra ID roles assigned to adm-engineer at provisioning.
+#  This is the "Tier 1" / operational set - day-to-day admin work that does NOT
+#  give the holder a path to elevate themselves or other identities.
+#
+#  Originally retrieved from tenant contoso.onmicrosoft.com on 2026-04-24,
+#  then curated on 2026-05-04 to remove elevation-capable and system-reserved
+#  roles. To refresh the canonical list of all built-in roles for re-curation:
+#      Get-MgRoleManagementDirectoryRoleDefinition -Filter 'isBuiltIn eq true' -All |
+#          Where-Object { $_.Id -ne '62e90394-69f5-4237-9190-012177145e10' } |
+#          Sort-Object DisplayName |
+#          ForEach-Object { "'$($_.DisplayName)' = '$($_.Id)'" }
+#
+# ------------------------------------------------------------------------------
+#  TIER 0.5 - elevation-capable roles INTENTIONALLY excluded from this hash
+# ------------------------------------------------------------------------------
+#  These roles can grant other directory roles, modify identity-protection
+#  policies, or bypass MFA. Standing assignment of any of them on a daily-use
+#  account effectively turns it into Global Admin via a side door. Recommended
+#  posture: configure each as PIM-eligible (NOT active) on adm-engineer in a
+#  separate post-provisioning step, requiring activation + MFA + justification
+#  + time-bound expiry. Requires Entra ID P2 license on the user.
+#
+#       Application Administrator                            (consent grants -> SP w/ RoleManagement.ReadWrite.Directory)
+#       Authentication Extensibility Administrator           (custom auth code -> elevation)
+#       Authentication Extensibility Password Administrator
+#       Authentication Policy Administrator                  (tenant-wide MFA / passwordless policies)
+#       Cloud Application Administrator                      (same risk as Application Administrator)
+#       Conditional Access Administrator                     (can carve self-bypass exceptions)
+#       Domain Name Administrator                            (federation / identity takeover via DNS)
+#       External Identity Provider Administrator             (rogue federation source)
+#       Hybrid Identity Administrator                        (controls AD Connect)
+#       Privileged Authentication Administrator              (resets MFA on other admins -> takeover)
+#       Privileged Role Administrator                        (can grant any directory role to anyone)
+#
+# ------------------------------------------------------------------------------
+#  Other roles INTENTIONALLY excluded (rare / deprecated / system-reserved)
+# ------------------------------------------------------------------------------
+#       Customer Delegated Admin Relationship Administrator  (CSP/GDAP partner-side - MSP rarely needs)
+#       Partner Tier1 Support / Partner Tier2 Support        (deprecated Microsoft backdoor roles)
+#       Tenant Creator                                       (creates new tenants under this account)
+#       Tenant Governance Relationship Administrator/Reader  (CSP relationship management)
+#       Directory Synchronization Accounts                   (reserved by Microsoft for AD Connect)
+#       On Premises Directory Sync Account                   (reserved)
+#       Device Join / Device Managers / Device Users /
+#         Workplace Device Join                              (system roles - not user-assignable)
+#       Guest User / Restricted Guest User / User            (membership types, not admin roles)
+#
 
 $EngineerRoleDefinitions = [ordered]@{
     'Agent ID Administrator'                              = 'db506228-d27e-4b7d-95e5-295956d6615f'
@@ -144,7 +191,6 @@ $EngineerRoleDefinitions = [ordered]@{
     'Agent Registry Administrator'                        = '6b942400-691f-4bf0-9d12-d8a254a2baf5'
     'AI Administrator'                                    = 'd2562ede-74db-457e-a7b6-544e236ebb61'
     'AI Reader'                                           = '1fe13547-53f6-408d-ac04-7f8eed167b38'
-    'Application Administrator'                           = '9b895d92-2cd3-44c7-9d02-a6ac2d5ea5c3'
     'Application Developer'                               = 'cf1c38e5-3621-4004-a7cb-879624dced7c'
     'Attack Payload Author'                               = '9c6df0f2-1e7c-4dc3-b195-66dfbd24aa8f'
     'Attack Simulation Administrator'                     = 'c430b396-e693-46cc-96f3-db01bf8bb62a'
@@ -157,9 +203,6 @@ $EngineerRoleDefinitions = [ordered]@{
     'Attribute Provisioning Administrator'                = 'ecb2c6bf-0ab6-418e-bd87-7986f8d63bbe'
     'Attribute Provisioning Reader'                       = '422218e4-db15-4ef9-bbe0-8afb41546d79'
     'Authentication Administrator'                        = 'c4e39bd9-1100-46d3-8c65-fb160da0071f'
-    'Authentication Extensibility Administrator'          = '25a516ed-2fa0-40ea-a2d0-12923a21473a'
-    'Authentication Extensibility Password Administrator' = '0b00bede-4072-4d22-b441-e7df02a1ef63'
-    'Authentication Policy Administrator'                 = '0526716b-113d-4c15-b2c8-68e3c22b9f80'
     'Azure AD Joined Device Local Administrator'          = '9f06204d-73c1-4d4c-880a-6edb90606fd8'
     'Azure DevOps Administrator'                          = 'e3973bdf-4987-49ae-837a-ba8e231c7286'
     'Azure Information Protection Administrator'          = '7495fdc4-34c4-4d15-a289-98788ce399fd'
@@ -167,21 +210,13 @@ $EngineerRoleDefinitions = [ordered]@{
     'B2C IEF Policy Administrator'                        = '3edaf663-341e-4475-9f94-5c398ef6c070'
     'Billing Administrator'                               = 'b0f54661-2d74-4c50-afa3-1ec803f12efe'
     'Cloud App Security Administrator'                    = '892c5842-a9a6-463a-8041-72aa08ca3cf6'
-    'Cloud Application Administrator'                     = '158c047a-c907-4556-b7ef-446551a6b5f7'
     'Cloud Device Administrator'                          = '7698a772-787b-4ac8-901f-60d6b08affd2'
     'Compliance Administrator'                            = '17315797-102d-40b4-93e0-432062caca18'
     'Compliance Data Administrator'                       = 'e6d1a23a-da11-4be4-9570-befc86d067a7'
-    'Conditional Access Administrator'                    = 'b1be1c3e-b65d-4f19-8427-f6fa0d97feb9'
-    'Customer Delegated Admin Relationship Administrator' = 'fc8ad4e2-40e4-4724-8317-bcda7503ecbf'
     'Customer LockBox Access Approver'                    = '5c4f9dcd-47dc-4cf7-8c9a-9e4207cbfc91'
     'Desktop Analytics Administrator'                     = '38a96431-2bdf-4b4c-8b6e-5d3d8abac1a4'
-    'Device Join'                                         = '9c094953-4995-41c8-84c8-3ebb9b32c93f'
-    'Device Managers'                                     = '2b499bcd-da44-4968-8aec-78e1674fa64d'
-    'Device Users'                                        = 'd405c6df-0af8-4e3b-95e4-4d06e542189e'
     'Directory Readers'                                   = '88d8e3e3-8f55-4a1e-953a-9b9898b8876b'
-    'Directory Synchronization Accounts'                  = 'd29b2b05-8046-44ba-8758-1e26182fcf32'
     'Directory Writers'                                   = '9360feb5-f418-4baa-8175-e2a00bac4301'
-    'Domain Name Administrator'                           = '8329153b-31d0-4727-b945-745eb3bc5f31'
     'Dragon Administrator'                                = 'e93e3737-fa85-474a-aee4-7d3fb86510f3'
     'Dynamics 365 Administrator'                          = '44367163-eba1-44c3-98af-f5787879f96a'
     'Dynamics 365 Business Central Administrator'         = '963797fb-eb3b-4cde-8ce3-5878b3f32a3f'
@@ -194,16 +229,13 @@ $EngineerRoleDefinitions = [ordered]@{
     'Extended Directory User Administrator'               = 'dd13091a-6207-4fc0-82ba-3641e056ab95'
     'External ID User Flow Administrator'                 = '6e591065-9bad-43ed-90f3-e9424366d2f0'
     'External ID User Flow Attribute Administrator'       = '0f971eea-41eb-4569-a71e-57bb8a3eff1e'
-    'External Identity Provider Administrator'            = 'be2f45a1-457d-42af-a067-6ec1fa63bc45'
     'Fabric Administrator'                                = 'a9ea8996-122f-4c74-9520-8edcd192826c'
     'Global Reader'                                       = 'f2ef992c-3afb-46b9-b7cf-a126ee74c451'
     'Global Secure Access Administrator'                  = 'ac434307-12b9-4fa1-a708-88bf58caabc1'
     'Global Secure Access Log Reader'                     = '843318fb-79a6-4168-9e6f-aa9a07481cc4'
     'Groups Administrator'                                = 'fdd7a751-b60b-444a-984c-02652fe8fa1c'
     'Guest Inviter'                                       = '95e79109-95c0-4d8e-aee3-d01accf2d47b'
-    'Guest User'                                          = '10dae51f-b6af-4016-8d66-8c2a99b929b3'
     'Helpdesk Administrator'                              = '729827e3-9c14-49f7-bb1b-9608f156bbb8'
-    'Hybrid Identity Administrator'                       = '8ac3fc64-6eca-42ea-9e69-59f4c7b60eb2'
     'Identity Governance Administrator'                   = '45d8d3c5-c802-45c6-b32a-1d70b5e1e86e'
     'Insights Administrator'                              = 'eb1f4a8d-243a-41f0-9fbd-c7cdf6c5ef7c'
     'Insights Analyst'                                    = '25df335f-86eb-4119-b717-0ff02de207e9'
@@ -224,13 +256,10 @@ $EngineerRoleDefinitions = [ordered]@{
     'Microsoft Hardware Warranty Specialist'              = '281fe777-fb20-4fbb-b7a3-ccebce5b0d96'
     'Network Administrator'                               = 'd37c8bed-0711-4417-ba38-b4abe66ce4c2'
     'Office Apps Administrator'                           = '2b745bdf-0803-4d80-aa65-822c4493daac'
-    'On Premises Directory Sync Account'                  = 'a92aed5d-d78a-4d16-b381-09adb37eb3b0'
     'Organizational Branding Administrator'               = '92ed04bf-c94a-4b82-9729-b799a7a4c178'
     'Organizational Data Source Administrator'            = '9d70768a-0cbc-4b4c-aea3-2e124b2477f4'
     'Organizational Messages Approver'                    = 'e48398e2-f4bb-4074-8f31-4586725e205b'
     'Organizational Messages Writer'                      = '507f53e4-4e52-4077-abd3-d2e1558b6ea2'
-    'Partner Tier1 Support'                               = '4ba39ca4-527c-499a-b93d-d9b492c50246'
-    'Partner Tier2 Support'                               = 'e00e864a-17c5-4a4b-9c06-f5b95a8d5bd8'
     'Password Administrator'                              = '966707d0-3269-4727-9be2-8c3a10f19b9d'
     'People Administrator'                                = '024906de-61e5-49c8-8572-40335f1e0e10'
     'Permissions Management Administrator'                = 'af78dc32-cf4d-46f9-ba4e-4428526346b5'
@@ -238,13 +267,10 @@ $EngineerRoleDefinitions = [ordered]@{
     'Power Platform Administrator'                        = '11648597-926c-4cf3-9c36-bcebb0ba8dcc'
     'Printer Administrator'                               = '644ef478-e28f-4e28-b9dc-3fdde9aa0b1f'
     'Printer Technician'                                  = 'e8cef6f1-e4bd-4ea8-bc07-4b8d950f4477'
-    'Privileged Authentication Administrator'             = '7be44c8a-adaf-4e2a-84d6-ab2649e08a13'
-    'Privileged Role Administrator'                       = 'e8611ab8-c189-46e8-94e1-60213ab1f814'
     'Purview Workload Content Administrator'              = '3f04f91a-4ad7-4bd3-bcfa-49882ea1a88a'
     'Purview Workload Content Reader'                     = 'e07494ad-1654-4dd2-922e-6f81a71bf00f'
     'Purview Workload Content Writer'                     = '02d5655b-c1cf-4e5f-98da-5fb919085bf6'
     'Reports Reader'                                      = '4a5d8f65-41da-4de4-8968-e035b65339cf'
-    'Restricted Guest User'                               = '2af84b1e-32c8-42b7-82bc-daa82404023b'
     'Search Administrator'                                = '0964bb5e-9bdb-4d7b-ac29-58e794862a40'
     'Search Editor'                                       = '8835291a-918c-4fd7-a9ce-faa49f0cf7d9'
     'Security Administrator'                              = '194ae4cb-b126-40b2-bd5b-6091b380977d'
@@ -264,13 +290,9 @@ $EngineerRoleDefinitions = [ordered]@{
     'Teams External Collaboration Administrator'          = '2fe872fb-daa8-4afc-8f6c-53c4565cfef4'
     'Teams Reader'                                        = '1076ac91-f3d9-41a7-a339-dcdf5f480acc'
     'Teams Telephony Administrator'                       = 'aa38014f-0993-46e9-9b45-30501a20909d'
-    'Tenant Creator'                                      = '112ca1a2-15ad-4102-995e-45b0bc479a6a'
     'Tenant Governance Administrator'                     = '1981f584-96e9-4a6f-95b0-f522373f8fae'
     'Tenant Governance Reader'                            = 'e0a4caa6-fe82-443f-b92f-d87341d17b2e'
-    'Tenant Governance Relationship Administrator'        = 'b8e31d83-1534-480f-9b10-0338ded51b7e'
-    'Tenant Governance Relationship Reader'               = '124577f8-48ed-456a-839f-13b419002e33'
     'Usage Summary Reports Reader'                        = '75934031-6c7e-415a-99d7-48dbd49e875e'
-    'User'                                                = 'a0b1b346-4d3e-4e8b-98f8-753987be4970'
     'User Administrator'                                  = 'fe930be7-5e62-47db-91af-98c3a49a38b1'
     'User Experience Success Manager'                     = '27460883-1df1-4691-b032-3b79643e5e63'
     'Virtual Visits Administrator'                        = 'e300d9e7-4a2b-4295-9eff-f1c78b36cc98'
@@ -279,7 +301,6 @@ $EngineerRoleDefinitions = [ordered]@{
     'Viva Pulse Administrator'                            = '87761b17-1ed2-4af3-9acd-92a150038160'
     'Windows 365 Administrator'                           = '11451d60-acb2-45eb-a7d6-43d0f0125c13'
     'Windows Update Deployment Administrator'             = '32696413-001a-46ae-978c-ce0f6b3620d2'
-    'Workplace Device Join'                               = 'c34f683f-4d5a-4403-affd-6615e00e3a7f'
     'Yammer Administrator'                                = '810a2642-a034-447f-a5e8-41beaa378541'
 }
 
@@ -752,4 +773,56 @@ else {
             }
         }
 
-        $caPolicy = New-MgIdentityConditionalAccessPolicy -BodyPa
+        $caPolicy = New-MgIdentityConditionalAccessPolicy -BodyParameter $caBody
+        Write-OK "Created CA policy: '$policyName'  (Id: $($caPolicy.Id))"
+        Write-OK "MFA is enforced - adm-engineer and adm-support must use MFA to sign in."
+    }
+}
+
+#endregion
+
+#region -- Credential Summary -------------------------------------------------
+
+if ($newCredentials.Count -gt 0) {
+    Write-Host ""
+    Write-Host "  +----------------------------------------------------------+" -ForegroundColor Yellow
+    Write-Host "  |   NEW ACCOUNT CREDENTIALS - COPY NOW, STORE SECURELY    |" -ForegroundColor Yellow
+    Write-Host "  +----------------------------------------------------------+" -ForegroundColor Yellow
+
+    foreach ($cred in $newCredentials) {
+        Write-Host ""
+        Write-Host "  Display Name  : $($cred.DisplayName)"
+        Write-Host "  UPN           : $($cred.UserPrincipalName)"
+        Write-Host "  Password      : " -NoNewline
+        Write-Host $cred.Password -ForegroundColor Yellow -BackgroundColor DarkGray
+        Write-Host "  Roles         : $($cred.Roles)"
+        Write-Host "  MFA Required  : $($cred.MfaRequired)"
+        Write-Host "  ----------------------------------------------------------"
+    }
+
+    Write-Host ""
+    Write-Host "  [!!] BREAKGLASS storage:" -ForegroundColor Yellow
+    Write-Host "       adm-breakglass-msp     -> MSP secure vault (offline, sealed). Do NOT" -ForegroundColor Yellow
+    Write-Host "                                 store in a digital password manager that can" -ForegroundColor Yellow
+    Write-Host "                                 be reached from the same auth chain you would" -ForegroundColor Yellow
+    Write-Host "                                 need this account to recover." -ForegroundColor Yellow
+    Write-Host "       adm-breakglass-client  -> Hand to client contact. Client stores in a" -ForegroundColor Yellow
+    Write-Host "                                 physically separate location from the MSP copy" -ForegroundColor Yellow
+    Write-Host "                                 (office safe, safety deposit box, etc.). Do NOT" -ForegroundColor Yellow
+    Write-Host "                                 share with MSP or store digitally." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  [!!] adm-engineer / adm-support credentials -> MSP vault, against client record." -ForegroundColor Yellow
+    Write-Host ""
+}
+else {
+    Write-Host "`n   No new accounts were created (all already existed or WhatIf mode)." -ForegroundColor Cyan
+}
+
+#endregion
+
+#region -- Disconnect ---------------------------------------------------------
+
+Disconnect-MgGraph | Out-Null
+Write-Host "`n[OK] Disconnected. Script complete.`n" -ForegroundColor Green
+
+#endregion

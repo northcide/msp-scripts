@@ -1,0 +1,23 @@
+# PowerShell transcripts / install logs
+*.log
+PSInstallLog.txt
+
+# Local secrets — never commit API keys, tokens, or credential files
+secrets.ps1
+*.secrets.ps1
+*.credential
+*.pfx
+*.key
+
+# Editor / OS noise
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.swp
+*~
+
+# Windows / OneDrive sync artifacts
+*:Zone.Identifier
+~$*

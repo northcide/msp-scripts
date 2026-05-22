@@ -1,8 +1,23 @@
 # 365 Tenant Admin Account Setup
 
-PowerShell script to provision a standard set of admin accounts on a new Microsoft 365 tenant via Microsoft Graph. Designed for MSP use — run it once per tenant during onboarding to establish a consistent, secure admin baseline.
+PowerShell scripts to establish and maintain a standard admin baseline on a Microsoft 365 tenant. Designed for MSP use during tenant onboarding (`New-TenantAdminAccounts.ps1`) and follow-on hygiene (`Update-BreakglassAlertEmail.ps1`).
 
-## What it provisions
+## Scripts
+
+| Script | Run when | Touches |
+|---|---|---|
+| `New-TenantAdminAccounts.ps1` | Once per tenant during onboarding | Entra ID — accounts, role assignments, one Conditional Access policy (via Microsoft Graph) |
+| `Update-BreakglassAlertEmail.ps1` | When the MSP's alert-routing inbox changes, or when a tenant is handed off | Purview — `Set-ProtectionAlert` on existing breakglass-related alert policies (via Security & Compliance Center) |
+
+The two scripts are independent — running one does not require the other. They share a common assumption that the tenant has been hardened with the breakglass-pair pattern (one MSP-held, one client-held).
+
+---
+
+## New-TenantAdminAccounts.ps1
+
+Provisions a standard set of admin accounts on a new Microsoft 365 tenant via Microsoft Graph. Run once per tenant during onboarding to establish a consistent, secure admin baseline.
+
+### What it provisions
 
 | Account | Role(s) | MFA | Purpose |
 |---|---|---|---|
@@ -15,7 +30,7 @@ A Conditional Access policy is created requiring MFA for `adm-engineer` and `adm
 
 All accounts are created without a `usageLocation`, preventing license assignment and ensuring no mailbox, OneDrive, or Teams presence exists for these accounts.
 
-## Prerequisites
+### Prerequisites
 
 - PowerShell 7.1 or later
 - Microsoft.Graph module:
@@ -29,7 +44,7 @@ All accounts are created without a `usageLocation`, preventing license assignmen
   - `Policy.Read.All`
   - `Domain.Read.All`
 
-## Usage
+### Usage
 
 **Provision accounts (standard run):**
 ```powershell
@@ -48,7 +63,7 @@ A browser sign-in prompt will appear. Sign in against the target tenant. If a Mi
 ```
 Breakglass accounts are never touched by `-ResetPasswords`.
 
-## After running
+### After running
 
 **Breakglass (MSP):** Store credentials in the MSP secure vault. Do not share with the client.
 
@@ -56,7 +71,7 @@ Breakglass accounts are never touched by `-ResetPasswords`.
 
 **Engineer / Support:** Copy credentials from the console immediately and store in the MSP vault against the client record. These accounts will be prompted for MFA on first sign-in.
 
-## Design notes
+### Design notes
 
 **Why two breakglass accounts?** A single breakglass creates a single point of failure — if the password is lost, corrupted, or the account is accidentally disabled, there is no recovery path. Two independently stored accounts ensure one can fail without losing emergency access. The client-held copy also ensures the client retains independent access regardless of the MSP relationship.
 
@@ -79,3 +94,44 @@ A few other roles are also excluded as either deprecated, rare, or non-user-assi
 **What about other powerful roles `adm-engineer` *does* hold?** Roles like Exchange Administrator, SharePoint Administrator, and User Administrator are powerful (read all mail, all docs, manage user accounts) but aren't direct elevation paths. They're included in Tier 1 because actually *doing* an engineer's job requires them. Putting them through PIM as well is the next-level hardening move once PIM is up — a single Tier 1 PIM eligibility set covers both the operational roles in the engineer hash and the elevation roles excluded from it.
 
 **Why no `usageLocation`?** Entra ID requires `usageLocation` before a license can be assigned. Omitting it prevents these accounts from being licensed, which eliminates the associated attack surface (no mailbox to phish, no OneDrive to exfiltrate from).
+
+---
+
+## Update-BreakglassAlertEmail.ps1
+
+Re-points the notification recipients (`NotifyUser`) on Purview Protection Alert policies that watch breakglass sign-ins and CA-policy changes. Run when your MSP's alert-routing inbox changes, or when a tenant is handed off to a different MSP.
+
+The script does **not** create the alerts themselves. They're expected to already exist in the tenant — typically created manually in the Purview portal (Security & Compliance Center → Alerts → Alert policies) as part of tenant hardening, after the accounts are provisioned. The script matches policies by name pattern:
+
+- `Breakglass Sign-In - <upn>` — one per breakglass account
+- `CA Policy Add/Update/Delete [<tenant>]`
+
+If no policies match those patterns, the script lists any fuzzy near-matches (anything containing "breakglass" or starting with "CA Policy") and exits without making changes — so a renamed alert can't silently get missed.
+
+### Prerequisites
+
+- PowerShell 7.1 or later
+- An E5 or E3 + Threat Intelligence subscription on the target tenant (Protection Alert policies are gated on these SKUs)
+- `ExchangeOnlineManagement` module — installed automatically on first run if missing
+- Sign-in account with **Global Admin** or **Compliance Admin** rights against the Security & Compliance Center
+
+### Usage
+
+**Interactive TUI (default):**
+```powershell
+.\Update-BreakglassAlertEmail.ps1
+```
+A two-field menu: notification emails (space- or comma-separated) and a `WhatIf` toggle. Falls back to a `Read-Host` prompt if the host doesn't support virtual terminal sequences.
+
+**Non-interactive:**
+```powershell
+.\Update-BreakglassAlertEmail.ps1 -NewEmails alerts@example.com
+.\Update-BreakglassAlertEmail.ps1 -NewEmails 'a@x.com','b@x.com' -WhatIf
+```
+
+### Notes
+
+- The `$DefaultAlertEmails` value at the top of the script (currently `alerts@example.com`) seeds the TUI's default field — edit it to your MSP's real inbox before first interactive run, or always pass `-NewEmails`.
+- `-WhatIf` previews the policy set without calling `Set-ProtectionAlert`.
+- A failure on one policy does not abort the run — the rest are still attempted, and the final summary lists successes vs. failures.
+- The session disconnects automatically on exit, including on errors.

@@ -21,6 +21,7 @@ New platforms (e.g. `huntress/`, `m365/`) get their own top-level folder as work
 | Script | Purpose | Setup |
 |---|---|---|
 | `365-tenant-admin-setup/New-TenantAdminAccounts.ps1` | Provisions a standard set of admin accounts (two breakglass, `adm-engineer`, `adm-support`) on a new Microsoft 365 tenant via Microsoft Graph, plus a CA policy requiring MFA. `-WhatIf` previews; `-ResetPasswords` rotates engineer/support creds without touching breakglass. | PowerShell 7.1+, `Microsoft.Graph` module. See `365-tenant-admin-setup/README.md` for required Graph scopes and post-run credential-storage guidance. |
+| `365-tenant-admin-setup/Update-BreakglassAlertEmail.ps1` | Updates the notification recipients on existing Purview Protection Alert policies for breakglass sign-ins and CA-policy changes. Used when the MSP's alert-routing inbox changes or a tenant is handed off. TUI menu by default; `-NewEmails` and `-WhatIf` for non-interactive use. | PowerShell 7.1+, `ExchangeOnlineManagement` module (auto-installed). Requires E5 or E3 + Threat Intelligence on the target tenant. Does not create the alerts — they must already exist. |
 
 ### ironscales/
 

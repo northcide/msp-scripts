@@ -8,6 +8,15 @@ secrets.ps1
 *.credential
 *.pfx
 *.key
+*.api-key
+*.partner-key
+.ironscales-*-key
+.*-api-key
+.*-partner-key
+
+# Claude Code per-user/local settings (shared settings.json is OK)
+.claude/settings.local.json
+.claude/*.local.json
 
 # Editor / OS noise
 .vscode/

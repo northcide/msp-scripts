@@ -46,22 +46,29 @@ All accounts are created without a `usageLocation`, preventing license assignmen
 
 ### Usage
 
-**Provision accounts (standard run):**
+**Interactive menu (default):**
 ```powershell
 .\New-TenantAdminAccounts.ps1
 ```
-A browser sign-in prompt will appear. Sign in against the target tenant. If a Microsoft Graph session is already active in the current PowerShell window it will be reused.
+Launched with no switch, an arrow-key action menu appears first (falls back to a `Read-Host` prompt if the host lacks virtual-terminal support). Choose one of:
+
+1. **New account setup** — provision all four standard accounts + the CA policy.
+2. **Create individual account(s)** — tick which of the four standard accounts to create.
+3. **Create a NEW custom account** — an operator-named account (any UPN except the four reserved names) that mimics one role template: **Breakglass GA**, **adm-engineer**, or **adm-support**. Engineer/support-template accounts are added to the MFA CA policy; breakglass-template accounts are excluded.
+4. **Reset password(s)** — type one or more UPNs to reset (bare names are completed against the tenant). Breakglass accounts are always refused.
+
+The menu also has a `WhatIf` toggle for a dry run. After the menu, a browser sign-in prompt appears; an active Graph session in the current window is reused.
 
 **Preview without making changes:**
 ```powershell
 .\New-TenantAdminAccounts.ps1 -WhatIf
 ```
 
-**Reset passwords for engineer and support accounts:**
+**Reset passwords for engineer and support accounts (non-interactive):**
 ```powershell
 .\New-TenantAdminAccounts.ps1 -ResetPasswords
 ```
-Breakglass accounts are never touched by `-ResetPasswords`.
+`-ResetPasswords` and `-WhatIf` bypass the menu. Breakglass accounts are never touched by `-ResetPasswords`; to reset a different account, use the menu's **Reset password(s)** action.
 
 ### After running
 

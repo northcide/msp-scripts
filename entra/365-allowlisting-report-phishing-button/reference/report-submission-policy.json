@@ -1,0 +1,12 @@
+{
+  "EnableReportToMicrosoft": false,
+  "EnableThirdPartyAddress": false,
+  "ThirdPartyReportAddresses": null,
+  "ReportJunkToCustomizedAddress": false,
+  "ReportJunkAddresses": null,
+  "ReportNotJunkToCustomizedAddress": false,
+  "ReportNotJunkAddresses": null,
+  "ReportPhishToCustomizedAddress": false,
+  "ReportPhishAddresses": null,
+  "RemoveSubmissionRule": true
+}

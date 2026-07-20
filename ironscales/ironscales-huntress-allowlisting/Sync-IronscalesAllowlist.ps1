@@ -15,9 +15,13 @@
     Re-runs are idempotent: POSTs missing entries, PUTs entries with wrong
     flags, leaves correct entries untouched.
 
-    Every run is one-shot: the Company ID and Company Token are entered
+    Every run is one-shot: the Company ID and APP API Token are entered
     interactively (or via parameters) and held in-memory only. Nothing is
     written to disk.
+
+    Both values are found in the IronScales web UI: log in, switch into
+    the customer context, click the settings cog in the top right, and
+    copy "Company ID" and "APP API Token" from that page.
 
     Note: the Simulation Mail Reported text (Settings -> Threat Protection
     -> Report Phishing Add-on (O365) -> Simulation Mail Reported) is NOT
@@ -84,9 +88,12 @@ $DesiredIgnoreAuth       = $true
 $DesiredExternalCampaigns = $true
 
 function Read-ApiKey {
-    Write-Host 'Enter the Company Token for this tenant' -ForegroundColor Yellow
-    Write-Host '  (IronScales web UI -> Settings -> General -> Company Token):' -ForegroundColor Yellow
-    $secure = Read-Host -Prompt 'Company Token' -AsSecureString
+    Write-Host 'Enter the APP API Token for this tenant' -ForegroundColor Yellow
+    Write-Host '  Where to find it:' -ForegroundColor Yellow
+    Write-Host '    1. Log into IronScales and switch into the customer context.' -ForegroundColor Yellow
+    Write-Host '    2. Click the settings cog in the top right.' -ForegroundColor Yellow
+    Write-Host '    3. Copy the value labeled "APP API Token" on that page.' -ForegroundColor Yellow
+    $secure = Read-Host -Prompt 'APP API Token' -AsSecureString
     if (-not $secure -or $secure.Length -eq 0) { throw 'No API key provided.' }
 
     $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
@@ -237,7 +244,12 @@ function Format-HttpError {
 # --- Main -------------------------------------------------------------------
 
 if (-not $CompanyId -or [string]::IsNullOrWhiteSpace($CompanyId)) {
-    $CompanyId = (Read-Host -Prompt 'IronScales Company ID').Trim()
+    Write-Host 'Enter the IronScales Company ID for this tenant' -ForegroundColor Yellow
+    Write-Host '  Where to find it:' -ForegroundColor Yellow
+    Write-Host '    1. Log into IronScales and switch into the customer context.' -ForegroundColor Yellow
+    Write-Host '    2. Click the settings cog in the top right.' -ForegroundColor Yellow
+    Write-Host '    3. Copy the value labeled "Company ID" on that page.' -ForegroundColor Yellow
+    $CompanyId = (Read-Host -Prompt 'Company ID').Trim()
     if (-not $CompanyId) { throw 'No Company ID provided.' }
 }
 

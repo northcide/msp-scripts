@@ -1,0 +1,174 @@
+
+<OfficeApp
+        xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+        xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:type="MailApp">
+    <Id>7164e750-dc86-49c0-b548-1dac57abdc7d</Id>
+    <Version>1.0.0</Version>
+    <ProviderName>IRONSCALES</ProviderName>
+    <DefaultLocale>en-US</DefaultLocale>
+    <DisplayName DefaultValue="Report phishing"/>
+    <Description DefaultValue="AI-Powered Incident Response for Outlook / Outlook for Mobile (company_name)"/>
+    <IconUrl DefaultValue="https://members.ironscales.com/static/owa/images/logo-blue-64.png"/>
+    <HighResolutionIconUrl DefaultValue="https://members.ironscales.com/static/owa/images/logo-blue-80.png"/>
+    <Hosts>
+        <Host Name="Mailbox"/>
+    </Hosts>
+    <Requirements>
+        <Sets>
+            <Set Name="MailBox" MinVersion="1.1"/>
+        </Sets>
+    </Requirements>
+    <FormSettings>
+        <Form xsi:type="ItemRead">
+            <DesktopSettings>
+                <SourceLocation DefaultValue="https://members.ironscales.com/owa/getowa/ada63b55-9ecc-4427-98d9-c0685f3f1c3c"/>
+                <RequestedHeight>100</RequestedHeight>
+            </DesktopSettings>
+            <TabletSettings>
+                <SourceLocation DefaultValue="https://members.ironscales.com/owa/getowa/ada63b55-9ecc-4427-98d9-c0685f3f1c3c"/>
+                <RequestedHeight>100</RequestedHeight>
+            </TabletSettings>
+            <PhoneSettings>
+                <SourceLocation DefaultValue="https://members.ironscales.com/owa/getowa/ada63b55-9ecc-4427-98d9-c0685f3f1c3c"/>
+            </PhoneSettings>
+        </Form>
+    </FormSettings>
+    <Permissions>ReadWriteMailbox</Permissions>
+    <Rule xsi:type="RuleCollection" Mode="Or">
+        <Rule xsi:type="ItemIs" ItemType="Message" FormType="Read" IncludeSubClasses="true"/>
+    </Rule>
+    <DisableEntityHighlighting>false</DisableEntityHighlighting>
+    <VersionOverrides
+            xmlns="http://schemas.microsoft.com/office/mailappversionoverrides"
+            xsi:type="VersionOverridesV1_0">
+        <Hosts>
+            <Host xsi:type="MailHost">
+                <DesktopFormFactor>
+                    <FunctionFile resid="function-file-url"/>
+                    <ExtensionPoint xsi:type="MessageReadCommandSurface">
+                        <OfficeTab id="TabDefault">
+                            <Group id="ironscales-control-group">
+                                <Label resid="ironscales-label"/>
+                                <Control xsi:type="Button" id="report-button">
+                                    <Label resid="report-button-label"/>
+                                    <Supertip>
+                                        <Title resid="report-button-label"/>
+                                        <Description resid="report-button-description"/>
+                                    </Supertip>
+                                    <Icon>
+                                        <bt:Image size="16" resid="logo-16"/>
+                                        <bt:Image size="32" resid="logo-32"/>
+                                        <bt:Image size="80" resid="logo-80"/>
+                                    </Icon>
+                                    <Action xsi:type="ShowTaskpane">
+                                        <SourceLocation resid="report-task-pane-url"/>
+                                    </Action>
+                                </Control>
+                            </Group>
+                        </OfficeTab>
+                    </ExtensionPoint>
+                </DesktopFormFactor>
+            </Host>
+        </Hosts>
+        <Resources>
+            <bt:Images>
+                <bt:Image id="logo-16" DefaultValue="https://members.ironscales.com/static/owa/images/logo-red-16.png"/>
+                <bt:Image id="logo-32" DefaultValue="https://members.ironscales.com/static/owa/images/logo-red-32.png"/>
+                <bt:Image id="logo-64" DefaultValue="https://members.ironscales.com/static/owa/images/logo-red-64.png"/>
+                <bt:Image id="logo-80" DefaultValue="https://members.ironscales.com/static/owa/images/logo-red-80.png"/>
+            </bt:Images>
+            <bt:Urls>
+                <bt:Url id="report-task-pane-url" DefaultValue="https://members.ironscales.com/owa/getowa/ada63b55-9ecc-4427-98d9-c0685f3f1c3c"/>
+            </bt:Urls>
+            <bt:ShortStrings>
+                <bt:String id="report-button-label" DefaultValue="Report phishing"/>
+                <bt:String id="ironscales-label" DefaultValue="Report phishing"/>
+            </bt:ShortStrings>
+            <bt:LongStrings>
+                <bt:String id="report-button-description"
+                           DefaultValue="This email will be reported to your security team for investigation.If the email is found malicious, it will be deleted from your mailbox and other emails in your organization."/>
+            </bt:LongStrings>
+        </Resources>
+        <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides/1.1"
+                          xsi:type="VersionOverridesV1_1">
+            <Hosts>
+                <Host xsi:type="MailHost">
+                    <DesktopFormFactor>
+                        <SupportsSharedFolders>true</SupportsSharedFolders>
+                        <FunctionFile resid="function-file-url"/>
+                        <ExtensionPoint xsi:type="MessageReadCommandSurface">
+                            <OfficeTab id="TabDefault">
+                                <Group id="ironscales-control-group">
+                                    <Label resid="ironscales-label"/>
+                                    <Control xsi:type="Button" id="report-button">
+                                        <Label resid="report-button-label"/>
+                                        <Supertip>
+                                            <Title resid="report-button-label"/>
+                                            <Description resid="report-button-description"/>
+                                        </Supertip>
+                                        <Icon>
+                                            <bt:Image size="16" resid="logo-16"/>
+                                            <bt:Image size="32" resid="logo-32"/>
+                                            <bt:Image size="80" resid="logo-80"/>
+                                        </Icon>
+                                        <Action xsi:type="ShowTaskpane">
+                                            <SourceLocation resid="report-task-pane-url"/>
+                                        </Action>
+                                    </Control>
+                                </Group>
+                            </OfficeTab>
+                        </ExtensionPoint>
+                    </DesktopFormFactor>
+                    <MobileFormFactor>
+                        <FunctionFile resid="function-file-url"/>
+                        <ExtensionPoint xsi:type="MobileMessageReadCommandSurface">
+                            <Group id="mobilegroupid">
+                                <Label resid="ironscales-label"/>
+                                <Control xsi:type="MobileButton" id="report-button">
+                                    <Label resid="report-button-label"/>
+                                    <Icon xsi:type="bt:MobileIconList">
+                                        <bt:Image size="25" scale="1" resid="logo-32"/>
+                                        <bt:Image size="25" scale="2" resid="logo-32"/>
+                                        <bt:Image size="25" scale="3" resid="logo-32"/>
+
+                                        <bt:Image size="32" scale="1" resid="logo-32"/>
+                                        <bt:Image size="32" scale="2" resid="logo-32"/>
+                                        <bt:Image size="32" scale="3" resid="logo-32"/>
+
+                                        <bt:Image size="48" scale="1" resid="logo-32"/>
+                                        <bt:Image size="48" scale="2" resid="logo-32"/>
+                                        <bt:Image size="48" scale="3" resid="logo-32"/>
+                                    </Icon>
+                                    <Action xsi:type="ShowTaskpane">
+                                        <SourceLocation resid="report-task-pane-url"/>
+                                    </Action>
+                                </Control>
+                            </Group>
+                        </ExtensionPoint>
+                    </MobileFormFactor>
+                </Host>
+            </Hosts>
+            <Resources>
+                <bt:Images>
+                    <bt:Image id="logo-16" DefaultValue="https://members.ironscales.com/static/owa/images/logo-red-16.png"/>
+                    <bt:Image id="logo-32" DefaultValue="https://members.ironscales.com/static/owa/images/logo-red-32.png"/>
+                    <bt:Image id="logo-64" DefaultValue="https://members.ironscales.com/static/owa/images/logo-red-64.png"/>
+                    <bt:Image id="logo-80" DefaultValue="https://members.ironscales.com/static/owa/images/logo-red-80.png"/>
+                </bt:Images>
+                <bt:Urls>
+                    <bt:Url id="report-task-pane-url" DefaultValue="https://members.ironscales.com/owa/getowa/ada63b55-9ecc-4427-98d9-c0685f3f1c3c"/>
+                </bt:Urls>
+                <bt:ShortStrings>
+                    <bt:String id="report-button-label" DefaultValue="Report phishing"/>
+                    <bt:String id="ironscales-label" DefaultValue="Report phishing"/>
+                </bt:ShortStrings>
+                <bt:LongStrings>
+                    <bt:String id="report-button-description"
+                               DefaultValue="This email will be reported to your security team for investigation.If the email is found malicious, it will be deleted from your mailbox and other emails in your organization."/>
+                </bt:LongStrings>
+            </Resources>
+        </VersionOverrides>
+    </VersionOverrides>
+</OfficeApp>

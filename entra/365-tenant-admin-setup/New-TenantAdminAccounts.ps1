@@ -3,6 +3,18 @@
     Creates standard admin accounts on a Microsoft 365 tenant.
 
 .DESCRIPTION
+    Launched with no switch, the script first shows an interactive action menu so
+    the operator can choose what to do:
+
+        1. New account setup      - provision all four standard accounts + CA policy
+        2. Create individual      - create a subset of the four standard accounts
+        3. Create a NEW custom     - an operator-named account that mimics the role
+                                     profile of one archetype (breakglass GA,
+                                     adm-engineer, or adm-support)
+        4. Reset password(s)      - reset by typed UPN (breakglass always excluded)
+
+    The -ResetPasswords and -WhatIf switches bypass the menu for non-interactive use.
+
     Connects to a Microsoft 365 tenant via Microsoft Graph and provisions four
     standard admin accounts using the tenant's *.onmicrosoft.com domain:
 
@@ -38,27 +50,29 @@
     and store securely.
 
 .PARAMETER ResetPasswords
-    Resets the passwords for adm-engineer and adm-support only.
-    Neither breakglass account is ever touched by this switch.
-    New passwords are displayed in the console - copy them immediately.
-    Skips all account creation, role assignment, and CA policy steps.
+    Bypasses the menu and resets the passwords for adm-engineer and adm-support
+    only (the same fixed targets as before this switch gained a menu). Neither
+    breakglass account is ever touched. New passwords are displayed in the console
+    - copy them immediately. Skips all account creation, role, and CA policy steps.
 
 .PARAMETER WhatIf
-    Shows what would be created/changed without making any changes.
+    Shows what would be created/changed without making any changes. Can also be
+    toggled from within the interactive menu.
 
 .EXAMPLE
     .\New-TenantAdminAccounts.ps1
 
-    Connects interactively. If you are already signed in to Microsoft Graph in
-    the current session, that connection (and tenant) is reused automatically.
-    Otherwise a browser sign-in prompt appears - whichever tenant you
-    authenticate against is used. No tenant ID needed.
+    Shows the interactive action menu, then connects. If you are already signed in
+    to Microsoft Graph in the current session, that connection (and tenant) is
+    reused automatically. Otherwise a browser sign-in prompt appears - whichever
+    tenant you authenticate against is used. No tenant ID needed.
 
 .EXAMPLE
     .\New-TenantAdminAccounts.ps1 -ResetPasswords
 
-    Resets passwords for adm-engineer and adm-support on the connected tenant.
-    Breakglass account is not touched.
+    Skips the menu and resets passwords for adm-engineer and adm-support on the
+    connected tenant. Breakglass accounts are not touched. To reset a different
+    account, use the menu's "Reset password(s)" action and type the UPN.
 
 .NOTES
     Requires the Microsoft.Graph PowerShell module:
@@ -94,6 +108,220 @@ function Write-Step { param([string]$Msg) Write-Host "`n>> $Msg" -ForegroundColo
 function Write-OK   { param([string]$Msg) Write-Host "   [OK]  $Msg" -ForegroundColor Green }
 function Write-Warn { param([string]$Msg) Write-Host "   [!!]  $Msg" -ForegroundColor Yellow }
 function Write-Fail { param([string]$Msg) Write-Host "   [XX]  $Msg" -ForegroundColor Red }
+
+#endregion
+
+#region -- Interactive Action Menu --------------------------------------------
+#
+#  Shown only when the script is launched with no switch. Lets the operator pick
+#  what to do instead of the script assuming "full setup". Raw-mode arrow-key TUI
+#  with a plain Read-Host fallback for redirected input / no virtual terminal.
+#  (Mirrors the Show-UpdateMenu pattern in Update-BreakglassAlertEmail.ps1.)
+#
+#  Returns a hashtable:
+#     @{ Action   = 'Setup' | 'CreateSelected' | 'CreateCustom' | 'Reset'
+#        Accounts = @(<mailNickname>, ...)   # populated for CreateSelected only
+#        WhatIf   = $bool }
+#  ...or $null if the operator cancels (esc / no valid choice).
+
+# The four standard accounts, keyed by mailNickname, with a short description.
+$StandardAccounts = [ordered]@{
+    'adm-breakglass-msp'    = 'Breakglass, MSP-held    (Global Admin, excluded from CA)'
+    'adm-breakglass-client' = 'Breakglass, client-held (Global Admin, excluded from CA)'
+    'adm-engineer'          = 'Engineer (all built-in roles except GA, MFA required)'
+    'adm-support'           = 'Support  (Exchange/User/Helpdesk/SharePoint/License, MFA)'
+}
+
+function Show-ActionMenuFallback {
+    [OutputType([hashtable])]
+    param()
+
+    Write-Host ""
+    Write-Host "  NEW-TENANTADMINACCOUNTS" -ForegroundColor Cyan
+    Write-Host "  ----------------------------------------------------------" -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "  1) New account setup      - all four standard accounts + CA policy"
+    Write-Host "  2) Create individual      - pick which standard account(s) to create"
+    Write-Host "  3) Create a NEW custom    - operator-named account using a role template"
+    Write-Host "  4) Reset password(s)      - reset by typed UPN (breakglass excluded)"
+    Write-Host ""
+    $choice = (Read-Host "  Choose an action [1-4]").Trim()
+
+    $map = @{ '1' = 'Setup'; '2' = 'CreateSelected'; '3' = 'CreateCustom'; '4' = 'Reset' }
+    $act = $map[$choice]
+    if (-not $act) { Write-Warn "No valid action chosen."; return $null }
+
+    $accounts = @()
+    if ($act -eq 'CreateSelected') {
+        Write-Host ""
+        $accKeys = @($StandardAccounts.Keys)
+        for ($i = 0; $i -lt $accKeys.Count; $i++) {
+            Write-Host "     $($i + 1)) $($accKeys[$i])  - $($StandardAccounts[$accKeys[$i]])"
+        }
+        $raw = (Read-Host "  Accounts to create (e.g. 3,4  or  'all')").Trim()
+        if ($raw -match '^(?i)all$') {
+            $accounts = $accKeys
+        }
+        else {
+            $accounts = @(
+                $raw -split '[,\s]+' | Where-Object { $_ -ne '' } | ForEach-Object {
+                    if ($_ -match '^\d+$' -and [int]$_ -ge 1 -and [int]$_ -le $accKeys.Count) { $accKeys[[int]$_ - 1] }
+                    elseif ($_ -in $accKeys) { $_ }
+                }
+            )
+        }
+        if ($accounts.Count -eq 0) { Write-Warn "No accounts selected."; return $null }
+    }
+
+    Write-Host ""
+    $wi = (Read-Host "  WhatIf - dry run, no changes? [y/N]") -match '^[yY]'
+    Write-Host ""
+
+    return @{ Action = $act; Accounts = @($accounts); WhatIf = $wi }
+}
+
+function Show-ActionMenu {
+    [OutputType([hashtable])]
+    param()
+
+    $rawOk = $false
+    try { $rawOk = $Host.UI.SupportsVirtualTerminal -and -not [Console]::IsInputRedirected } catch {}
+    if (-not $rawOk) { return Show-ActionMenuFallback }
+
+    $ESC = [char]27
+
+    $actionLabels = @(
+        'New account setup            (all four standard accounts + CA policy)',
+        'Create individual account(s) (pick from the four standard accounts)',
+        'Create a NEW custom account  (operator-named, choose a role template)',
+        'Reset password(s)            (by typed UPN - breakglass excluded)'
+    )
+    $accKeys = @($StandardAccounts.Keys)
+
+    # ── Mutable state ─────────────────────────────────────────────────────────
+    #  The highlighted row IS the selected action (radio follows the cursor), so
+    #  up/down chooses and Enter runs - no separate "select" keypress. The account
+    #  checkboxes (multi-select) still toggle with Space, and WhatIf toggles with W.
+    $accSel    = @{}
+    foreach ($k in $accKeys) { $accSel[$k] = $false }
+    $whatIf    = $false
+    $focusKey  = 'a0'                    # semantic focus - resolved to an index each render
+    $done      = $false
+    $cancel    = $false
+    $lineCount = 0
+    $isFirst   = $true
+    $hint      = ''
+
+    [Console]::Write("$ESC[?25l")        # hide cursor
+
+    try {
+        while ($true) {
+
+            # Selected action is derived from the focused row: an action row selects
+            # itself; an account checkbox belongs to CreateSelected (action 1).
+            $selAction = if ($focusKey -like 'a?') { [int]$focusKey.Substring(1) }
+                         elseif ($focusKey -like 'c:*') { 1 }
+                         else { 0 }
+
+            # Ordered list of focusable rows (accounts appear only under CreateSelected).
+            # WhatIf is intentionally NOT here - it is a W hotkey so reaching it never
+            # moves the action selection.
+            $keys = [System.Collections.Generic.List[string]]::new()
+            $keys.Add('a0'); $keys.Add('a1')
+            if ($selAction -eq 1) { foreach ($k in $accKeys) { $keys.Add("c:$k") } }
+            $keys.Add('a2'); $keys.Add('a3')
+            if ($keys.IndexOf($focusKey) -lt 0) { $focusKey = 'a1' }
+
+            $ptr = { param([string]$k) if ($focusKey -eq $k) { "$ESC[97m>$ESC[0m" } else { ' ' } }
+            $rb  = { param([bool]$on)  if ($on) { "$ESC[92m(o)$ESC[0m" } else { '( )' } }
+            $cb  = { param([bool]$on)  if ($on) { "$ESC[92m[x]$ESC[0m" } else { '[ ]' } }
+
+            $lines = [System.Collections.Generic.List[string]]::new()
+            $lines.Add("")
+            $lines.Add("  $ESC[96;1mNEW-TENANTADMINACCOUNTS$ESC[0m")
+            $lines.Add("  $ESC[90m--------------------------------------------------------------$ESC[0m")
+            $lines.Add("")
+            $lines.Add("  $ESC[90mA browser sign-in window will open when you press Enter.$ESC[0m")
+            $lines.Add("")
+            $lines.Add("  $ESC[90mCHOOSE AN ACTION$ESC[0m")
+            for ($i = 0; $i -lt 4; $i++) {
+                $aKey   = "a$i"
+                $colour = if ($selAction -eq $i) { "$ESC[97m" } else { "$ESC[37m" }
+                $lines.Add(" $(& $ptr $aKey) $(& $rb ($selAction -eq $i))  $colour$($actionLabels[$i])$ESC[0m")
+                if ($i -eq 1 -and $selAction -eq 1) {
+                    foreach ($k in $accKeys) {
+                        $lines.Add("       $(& $ptr "c:$k") $(& $cb $accSel[$k])  $ESC[37m$k$ESC[0m  $ESC[90m$ESC[2m$($StandardAccounts[$k])$ESC[0m")
+                    }
+                }
+            }
+            $lines.Add("")
+            $lines.Add("  $ESC[90mOPTIONS$ESC[0m")
+            $lines.Add("     $(& $cb $whatIf)  $ESC[37mWhatIf$ESC[0m  $ESC[90m$ESC[2m(press W - dry run, no changes made)$ESC[0m")
+            $lines.Add("")
+            $lines.Add("  $ESC[90m--------------------------------------------------------------$ESC[0m")
+            if ($hint) {
+                $lines.Add("  $ESC[93m$hint$ESC[0m")
+            }
+            elseif ($selAction -eq 1) {
+                $lines.Add("  $ESC[90m  up/down move   space tick account   w WhatIf   enter run   esc cancel$ESC[0m")
+            }
+            else {
+                $lines.Add("  $ESC[90m  up/down move & select   w WhatIf   enter run   esc cancel$ESC[0m")
+            }
+            $lines.Add("")
+
+            # Reposition to the top of the block and clear everything below before
+            # repainting. Clearing to end-of-screen ($ESC[0J) is essential because the
+            # block height changes when the account checkboxes show/hide - without it,
+            # shrinking a render leaves stale lines (e.g. a duplicate footer) behind.
+            if (-not $isFirst) { [Console]::Write("$ESC[$($lineCount)A$ESC[0J") }
+            foreach ($ln in $lines) { [Console]::WriteLine($ln) }
+            $lineCount = $lines.Count
+            $isFirst   = $false
+
+            if ($done -or $cancel) { break }
+
+            $key = $null
+            try { $key = [Console]::ReadKey($true) } catch { $cancel = $true; continue }
+            $hint = ''
+            $idx  = $keys.IndexOf($focusKey)
+
+            switch ($key.Key) {
+                ([ConsoleKey]::UpArrow)   { $idx = [Math]::Max(0, $idx - 1); $focusKey = $keys[$idx] }
+                ([ConsoleKey]::DownArrow) { $idx = [Math]::Min($keys.Count - 1, $idx + 1); $focusKey = $keys[$idx] }
+                ([ConsoleKey]::Spacebar)  {
+                    # Space toggles the highlighted account checkbox (multi-select).
+                    if ($focusKey -like 'c:*') { $k = $focusKey.Substring(2); $accSel[$k] = -not $accSel[$k] }
+                }
+                ([ConsoleKey]::W)         { $whatIf = -not $whatIf }
+                ([ConsoleKey]::Enter)     {
+                    if ($selAction -eq 1 -and -not ($accSel.Values -contains $true)) {
+                        $hint = 'Tick at least one account (space), or move to another action.'
+                    }
+                    else { $done = $true }
+                }
+                ([ConsoleKey]::Escape)    { $cancel = $true }
+            }
+        }
+    }
+    finally {
+        [Console]::Write("$ESC[?25h")     # restore cursor
+    }
+
+    if ($cancel) { return $null }
+
+    # Resolve the final selected action from the last focused row.
+    $finalAction = if ($focusKey -like 'a?') { [int]$focusKey.Substring(1) }
+                   elseif ($focusKey -like 'c:*') { 1 }
+                   else { 0 }
+    $selectedAccounts = @($accKeys | Where-Object { $accSel[$_] })
+    $actMap = @('Setup', 'CreateSelected', 'CreateCustom', 'Reset')
+    return @{
+        Action   = $actMap[$finalAction]
+        Accounts = $selectedAccounts
+        WhatIf   = $whatIf
+    }
+}
 
 #endregion
 
@@ -383,6 +611,28 @@ function Add-UserToDirectoryRole {
 
 #endregion
 
+#region -- Determine Action ---------------------------------------------------
+#
+#  -ResetPasswords bypasses the menu (backward compatible - fixed engineer +
+#  support targets, no prompt). Otherwise show the interactive action menu.
+
+if ($ResetPasswords) {
+    $action = @{ Action = 'Reset'; Accounts = @('adm-engineer', 'adm-support'); WhatIf = $false }
+}
+else {
+    $action = Show-ActionMenu
+    if ($null -eq $action) {
+        Write-Host "`n[--] Cancelled. No changes made.`n" -ForegroundColor Cyan
+        exit 0
+    }
+    if ($action.WhatIf) {
+        $WhatIfPreference = $true
+        Write-Warn "WhatIf mode selected - no changes will be made."
+    }
+}
+
+#endregion
+
 #region -- Connect to Microsoft Graph -----------------------------------------
 #
 #  Auto-detect strategy:
@@ -403,13 +653,13 @@ $requiredScopes = @(
 )
 
 # Password resets use the authentication methods endpoint which requires this scope.
-if ($ResetPasswords) {
+if ($action.Action -eq 'Reset') {
     $requiredScopes += 'UserAuthenticationMethod.ReadWrite.All'
 }
 
 # For password resets, always force a fresh token so the Directory.ReadWrite.All
 # scope is actively consented rather than silently skipped from the MSAL cache.
-if ($ResetPasswords) {
+if ($action.Action -eq 'Reset') {
     try { Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null } catch {}
 }
 
@@ -463,18 +713,40 @@ Write-OK "Domain: $domainName"
 
 #region -- Password Reset (early exit) ----------------------------------------
 
-if ($ResetPasswords) {
-    Write-Step "Resetting passwords for adm-engineer and adm-support..."
+if ($action.Action -eq 'Reset') {
+    Write-Step "Reset passwords"
 
-    $resetTargets = @(
-        "adm-engineer@$domainName",
-        "adm-support@$domainName"
-    )
+    # Switch path: fixed engineer + support targets. Menu path: prompt for UPNs.
+    if ($ResetPasswords) {
+        $resetTargets = @($action.Accounts | ForEach-Object { "$_@$domainName" })
+    }
+    else {
+        Write-Host "  Enter one or more account UPNs to reset (space or comma separated)." -ForegroundColor DarkGray
+        Write-Host "  A bare name (e.g. adm-support) is completed against this tenant." -ForegroundColor DarkGray
+        Write-Host "  Press Enter to default to adm-engineer + adm-support." -ForegroundColor DarkGray
+        $raw = (Read-Host "  UPNs").Trim()
+        if ([string]::IsNullOrWhiteSpace($raw)) {
+            $resetTargets = @("adm-engineer@$domainName", "adm-support@$domainName")
+        }
+        else {
+            $resetTargets = @(
+                $raw -split '[,\s]+' | Where-Object { $_ -ne '' } | ForEach-Object {
+                    if ($_ -match '@') { $_ } else { "$_@$domainName" }
+                }
+            )
+        }
+    }
 
     $resetCredentials = [System.Collections.Generic.List[PSObject]]::new()
 
     foreach ($upn in $resetTargets) {
         Write-Host "`n  -- $upn" -ForegroundColor White
+
+        # Breakglass guard - emergency accounts are never reset by this script.
+        if (($upn -split '@')[0] -match '^(?i)adm-breakglass-') {
+            Write-Warn "Breakglass account - refusing to reset: $upn"
+            continue
+        }
 
         $user = Get-MgUser -Filter "userPrincipalName eq '$upn'" -ErrorAction SilentlyContinue
         if (-not $user) {
@@ -591,6 +863,95 @@ $accountDefs = @(
 
 #endregion
 
+#region -- Select Accounts to Provision ---------------------------------------
+#
+#  Reduce $accountDefs to the set this run should create, based on the chosen
+#  action. CreateCustom builds a synthetic def that clones a standard account's
+#  role/MFA/breakglass shape but with an operator-supplied UPN and display name.
+
+switch ($action.Action) {
+
+    'Setup' {
+        $selectedDefs = $accountDefs
+    }
+
+    'CreateSelected' {
+        $selectedDefs = @($accountDefs | Where-Object { $_.MailNickname -in $action.Accounts })
+        if ($selectedDefs.Count -eq 0) {
+            Write-Fail "No matching accounts selected. Nothing to do."
+            Disconnect-MgGraph | Out-Null
+            exit 1
+        }
+    }
+
+    'CreateCustom' {
+        Write-Step "Define the new custom account"
+
+        # Type only the name portion - the tenant's *.onmicrosoft.com domain is
+        # appended automatically (a pasted full UPN has its domain replaced).
+        Write-Host "  Enter only the name portion - it becomes:  <name>@$domainName" -ForegroundColor DarkGray
+
+        $reserved = @('adm-breakglass-msp', 'adm-breakglass-client', 'adm-engineer', 'adm-support')
+
+        # Local part -> UPN
+        $localPart = $null
+        while (-not $localPart) {
+            $raw = (Read-Host "  New account name (local part, e.g. adm-jsmith)").Trim()
+            if ([string]::IsNullOrWhiteSpace($raw)) { Write-Warn "Name cannot be empty."; continue }
+            $raw = ($raw -replace '@.*$', '').ToLower()     # tolerate a pasted full UPN
+            if ($raw -in $reserved) {
+                Write-Warn "'$raw' is a standard account - use 'Create individual account(s)' instead."
+                continue
+            }
+            if ($raw -notmatch '^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$') {
+                Write-Warn "Invalid characters. Use letters, digits, dot, dash, underscore."
+                continue
+            }
+            $localPart = $raw
+        }
+        $customUpn = "$localPart@$domainName"
+
+        $dnRaw       = (Read-Host "  Display name (Enter for '$localPart')").Trim()
+        $displayName = if ([string]::IsNullOrWhiteSpace($dnRaw)) { $localPart } else { $dnRaw }
+
+        # Archetype whose role/MFA shape the new account should mimic
+        Write-Host ""
+        Write-Host "  Role template to mimic:" -ForegroundColor DarkGray
+        Write-Host "    1) Breakglass GA  (Global Administrator, excluded from CA / MFA)"
+        Write-Host "    2) adm-engineer   (all built-in roles except GA, MFA required)"
+        Write-Host "    3) adm-support    (Exchange/User/Helpdesk/SharePoint/License, MFA required)"
+        $archetype = $null
+        while (-not $archetype) {
+            switch ((Read-Host "  Choose template [1-3]").Trim()) {
+                '1'     { $archetype = 'adm-breakglass-msp' }
+                '2'     { $archetype = 'adm-engineer' }
+                '3'     { $archetype = 'adm-support' }
+                default { Write-Warn "Enter 1, 2, or 3." }
+            }
+        }
+
+        # Clone the archetype's role/MFA/breakglass fields from the standard def so
+        # the templates never drift from what full setup provisions.
+        $template = $accountDefs | Where-Object { $_.MailNickname -eq $archetype } | Select-Object -First 1
+
+        $customDef = [ordered]@{
+            DisplayName       = $displayName
+            UserPrincipalName = $customUpn
+            MailNickname      = $localPart
+            Description       = "Custom admin account provisioned from the '$archetype' role template."
+            Roles             = $template.Roles
+            MfaRequired       = $template.MfaRequired
+        }
+        if ($template['AllBuiltInRolesExceptGA']) { $customDef['AllBuiltInRolesExceptGA'] = $true }
+        if ($template['IsBreakglass'])            { $customDef['IsBreakglass'] = $true }
+
+        $selectedDefs = @($customDef)
+        Write-OK "Custom account: $customUpn  (template: $archetype)"
+    }
+}
+
+#endregion
+
 #region -- Create Accounts & Assign Roles -------------------------------------
 
 Write-Step "Provisioning accounts..."
@@ -599,7 +960,7 @@ Write-Step "Provisioning accounts..."
 $objectIdMap    = @{}   # UPN -> ObjectId
 $newCredentials = [System.Collections.Generic.List[PSObject]]::new()
 
-foreach ($def in $accountDefs) {
+foreach ($def in $selectedDefs) {
     $upn = $def.UserPrincipalName
     Write-Host "`n  -- $($def.DisplayName)  ($upn)" -ForegroundColor White
 
@@ -718,10 +1079,11 @@ foreach ($def in $accountDefs) {
 #    - Created in ENABLED state - MFA is enforced immediately on first sign-in
 #      for adm-engineer and adm-support.
 
-Write-Step "Creating Conditional Access MFA policy..."
+Write-Step "Ensuring Conditional Access MFA policy..."
 
+# MFA targets = the MFA-required accounts provisioned in THIS run.
 $mfaTargetIds = @(
-    $accountDefs |
+    $selectedDefs |
         Where-Object { $_.MfaRequired } |
         ForEach-Object {
             $id = $objectIdMap[$_.UserPrincipalName]
@@ -729,17 +1091,23 @@ $mfaTargetIds = @(
         }
 )
 
-$breakglassIds = @(
-    $accountDefs |
-        Where-Object { $_['IsBreakglass'] } |
-        ForEach-Object {
-            $id = $objectIdMap[$_.UserPrincipalName]
-            if ($id) { $id }
-        }
-)
+# Breakglass exclusions = the two standard breakglass accounts (looked up by UPN
+# so they are excluded even when this run didn't create them), plus any breakglass
+# account created this run (e.g. a custom breakglass-template account).
+$breakglassIds = [System.Collections.Generic.List[string]]::new()
+foreach ($bgUpn in @("adm-breakglass-msp@$domainName", "adm-breakglass-client@$domainName")) {
+    $bg = Get-MgUser -Filter "userPrincipalName eq '$bgUpn'" -ErrorAction SilentlyContinue
+    if ($bg -and ($bg.Id -notin $breakglassIds)) { $breakglassIds.Add($bg.Id) }
+}
+foreach ($def in $selectedDefs) {
+    if ($def['IsBreakglass']) {
+        $id = $objectIdMap[$def.UserPrincipalName]
+        if ($id -and ($id -notin $breakglassIds)) { $breakglassIds.Add($id) }
+    }
+}
 
 if ($mfaTargetIds.Count -eq 0) {
-    Write-Warn "No MFA-required accounts found - skipping CA policy creation."
+    Write-Warn "No MFA-required accounts in this run - skipping CA policy."
 }
 else {
     $policyName = "Require MFA - Tenant Admin Accounts [$tenantSlug]"
@@ -747,35 +1115,60 @@ else {
     $existingPolicy = Get-MgIdentityConditionalAccessPolicy `
         -Filter "displayName eq '$policyName'" -ErrorAction SilentlyContinue
 
-    if ($existingPolicy) {
-        Write-Warn "CA policy '$policyName' already exists - skipping."
-    }
-    elseif ($PSCmdlet.ShouldProcess($policyName, 'Create Conditional Access policy')) {
-        $excludedUsers = [System.Collections.Generic.List[string]]::new()
-        foreach ($id in $breakglassIds) { $excludedUsers.Add($id) }
+    if (-not $existingPolicy) {
+        # Create fresh.
+        if ($PSCmdlet.ShouldProcess($policyName, 'Create Conditional Access policy')) {
+            $caBody = @{
+                displayName   = $policyName
+                state         = 'enabled'
+                conditions    = @{
+                    users = @{
+                        includeUsers = [array]$mfaTargetIds
+                        excludeUsers = $breakglassIds.Count -gt 0 ? [array]$breakglassIds : @()
+                    }
+                    applications = @{
+                        includeApplications = @('All')
+                    }
+                    clientAppTypes = @('all')
+                }
+                grantControls = @{
+                    operator        = 'OR'
+                    builtInControls = @('mfa')
+                }
+            }
 
-        $caBody = @{
-            displayName   = $policyName
-            state         = 'enabled'
-            conditions    = @{
-                users = @{
-                    includeUsers = [array]$mfaTargetIds
-                    excludeUsers = $excludedUsers.Count -gt 0 ? [array]$excludedUsers : @()
-                }
-                applications = @{
-                    includeApplications = @('All')
-                }
-                clientAppTypes = @('all')
-            }
-            grantControls = @{
-                operator        = 'OR'
-                builtInControls = @('mfa')
-            }
+            $caPolicy = New-MgIdentityConditionalAccessPolicy -BodyParameter $caBody
+            Write-OK "Created CA policy: '$policyName'  (Id: $($caPolicy.Id))"
+            Write-OK "MFA is enforced - the included admin accounts must use MFA to sign in."
         }
+    }
+    else {
+        # Merge the new MFA targets into the existing policy, keep breakglass excluded.
+        $curInclude = @($existingPolicy.Conditions.Users.IncludeUsers)
+        $curExclude = @($existingPolicy.Conditions.Users.ExcludeUsers)
+        $newInclude = @($curInclude + $mfaTargetIds  | Select-Object -Unique)
+        $newExclude = @($curExclude + $breakglassIds | Select-Object -Unique)
 
-        $caPolicy = New-MgIdentityConditionalAccessPolicy -BodyParameter $caBody
-        Write-OK "Created CA policy: '$policyName'  (Id: $($caPolicy.Id))"
-        Write-OK "MFA is enforced - adm-engineer and adm-support must use MFA to sign in."
+        $addInclude = @($newInclude | Where-Object { $_ -notin $curInclude })
+        $addExclude = @($newExclude | Where-Object { $_ -notin $curExclude })
+
+        if ($addInclude.Count -eq 0 -and $addExclude.Count -eq 0) {
+            Write-OK "CA policy '$policyName' already covers these accounts - no change."
+        }
+        elseif ($PSCmdlet.ShouldProcess($policyName, 'Update Conditional Access policy')) {
+            $updateBody = @{
+                conditions = @{
+                    users = @{
+                        includeUsers = [array]$newInclude
+                        excludeUsers = [array]$newExclude
+                    }
+                }
+            }
+            Update-MgIdentityConditionalAccessPolicy `
+                -ConditionalAccessPolicyId $existingPolicy.Id `
+                -BodyParameter $updateBody | Out-Null
+            Write-OK "Updated CA policy '$policyName' (+$($addInclude.Count) included, +$($addExclude.Count) excluded)."
+        }
     }
 }
 
@@ -800,18 +1193,20 @@ if ($newCredentials.Count -gt 0) {
         Write-Host "  ----------------------------------------------------------"
     }
 
+    if (@($selectedDefs | Where-Object { $_['IsBreakglass'] }).Count -gt 0) {
+        Write-Host ""
+        Write-Host "  [!!] BREAKGLASS storage:" -ForegroundColor Yellow
+        Write-Host "       adm-breakglass-msp     -> MSP secure vault (offline, sealed). Do NOT" -ForegroundColor Yellow
+        Write-Host "                                 store in a digital password manager that can" -ForegroundColor Yellow
+        Write-Host "                                 be reached from the same auth chain you would" -ForegroundColor Yellow
+        Write-Host "                                 need this account to recover." -ForegroundColor Yellow
+        Write-Host "       adm-breakglass-client  -> Hand to client contact. Client stores in a" -ForegroundColor Yellow
+        Write-Host "                                 physically separate location from the MSP copy" -ForegroundColor Yellow
+        Write-Host "                                 (office safe, safety deposit box, etc.). Do NOT" -ForegroundColor Yellow
+        Write-Host "                                 share with MSP or store digitally." -ForegroundColor Yellow
+    }
     Write-Host ""
-    Write-Host "  [!!] BREAKGLASS storage:" -ForegroundColor Yellow
-    Write-Host "       adm-breakglass-msp     -> MSP secure vault (offline, sealed). Do NOT" -ForegroundColor Yellow
-    Write-Host "                                 store in a digital password manager that can" -ForegroundColor Yellow
-    Write-Host "                                 be reached from the same auth chain you would" -ForegroundColor Yellow
-    Write-Host "                                 need this account to recover." -ForegroundColor Yellow
-    Write-Host "       adm-breakglass-client  -> Hand to client contact. Client stores in a" -ForegroundColor Yellow
-    Write-Host "                                 physically separate location from the MSP copy" -ForegroundColor Yellow
-    Write-Host "                                 (office safe, safety deposit box, etc.). Do NOT" -ForegroundColor Yellow
-    Write-Host "                                 share with MSP or store digitally." -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "  [!!] adm-engineer / adm-support credentials -> MSP vault, against client record." -ForegroundColor Yellow
+    Write-Host "  [!!] Non-breakglass admin credentials -> MSP vault, against the client record." -ForegroundColor Yellow
     Write-Host ""
 }
 else {

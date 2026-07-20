@@ -1,6 +1,12 @@
 # PowerShell transcripts / install logs
 *.log
 PSInstallLog.txt
+# Generated support-ticket transcripts (contain machine/user/tenant details)
+PhishSim-SupportDossier-*.txt
+# Support-ticket correspondence — keep local, never publish
+support-ticket-reply.txt
+# Tenant-specific mail-flow snapshot (own org infra) — keep local, never publish
+connection-filter-ipallowlist.txt
 
 # Local secrets — never commit API keys, tokens, or credential files
 secrets.ps1
